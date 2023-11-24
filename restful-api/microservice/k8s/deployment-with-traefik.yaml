@@ -1,0 +1,278 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: microservice
+---
+### Product Service Manifest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: product-service
+  name: product-service
+  namespace: microservice
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: product-service
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: product-service
+        app.kubernetes.io/name: product-service
+    spec:
+      containers:
+      - env:
+        - name: DATABASE_USER
+          value: "admin"
+        - name: DATABASE_PASSWORD
+          value: "admin"
+        - name: DATABASE_HOSTNAME
+          value: mysql-server.mysql-server.svc.cluster.local
+        - name: DATABASE_PORT
+          value: "3306"
+        - name: DATABASE_NAME
+          value: "microservice"
+        - name: REVIEWS_SERVICE
+          value: reviews-service.microservice.svc.cluster.local
+        - name: RATINGS_SERVICE
+          value: ratings-service.microservice.svc.cluster.local
+        image: docker.io/redopsbay/sample-restful-api:product-service-v1.0.0
+        ports:
+        - containerPort: 8000
+        imagePullPolicy: Always
+        name: product-service
+        livenessProbe:
+          httpGet:
+            path: /product/
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: microservice
+spec:
+  selector:
+    app.kubernetes.io/name: product-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: product-service
+  namespace: microservice
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: Host(`api.redopsbay.dev`) && PathPrefix(`/product`)
+    kind: Rule
+    services:
+    - name: product-service
+      port: 80
+---
+### Reviews Service Manifest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: reviews-service
+  name: reviews-service
+  namespace: microservice
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: reviews-service
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: reviews-service
+        app.kubernetes.io/name: reviews-service
+    spec:
+      containers:
+      - env:
+        - name: DATABASE_USER
+          value: "admin"
+        - name: DATABASE_PASSWORD
+          value: "admin"
+        - name: DATABASE_HOSTNAME
+          value: mysql-server.mysql-server.svc.cluster.local
+        - name: DATABASE_PORT
+          value: "3306"
+        - name: DATABASE_NAME
+          value: "microservice"
+        image: docker.io/redopsbay/sample-restful-api:review-service-v1.0.0
+        ports:
+        - containerPort: 8090
+        imagePullPolicy: Always
+        name: reviews-service
+        livenessProbe:
+          httpGet:
+            path: /reviews/
+            port: 8090
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews-service
+  namespace: microservice
+spec:
+  selector:
+    app.kubernetes.io/name: reviews-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8090
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: reviews-service
+  namespace: microservice
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: Host(`api.redopsbay.dev`) && PathPrefix(`/reviews`)
+    kind: Rule
+    services:
+    - name: reviews-service
+      port: 80
+---
+### Ratings Service Manifest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: ratings-service
+  name: ratings-service
+  namespace: microservice
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ratings-service
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: ratings-service
+        app.kubernetes.io/name: ratings-service
+    spec:
+      containers:
+      - env:
+        - name: DATABASE_USER
+          value: "admin"
+        - name: DATABASE_PASSWORD
+          value: "admin"
+        - name: DATABASE_HOSTNAME
+          value: mysql-server.mysql-server.svc.cluster.local
+        - name: DATABASE_PORT
+          value: "3306"
+        - name: DATABASE_NAME
+          value: "microservice"
+        image: docker.io/redopsbay/sample-restful-api:ratings-service-v1.0.0
+        ports:
+        - containerPort: 8080
+        imagePullPolicy: Always
+        name: ratings-service
+        livenessProbe:
+          httpGet:
+            path: /ratings/
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ratings-service
+  namespace: microservice
+spec:
+  selector:
+    app.kubernetes.io/name: ratings-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ratings-service
+  namespace: microservice
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: Host(`api.redopsbay.dev`) && PathPrefix(`/ratings`)
+    kind: Rule
+    services:
+    - name: ratings-service
+      port: 80
+---
+### Load Generator Manifest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: load-generator
+  name: load-generator
+  namespace: microservice
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: load-generator
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: load-generator
+        app.kubernetes.io/name: load-generator
+    spec:
+      containers:
+      - env:
+        - name: API_ENDPOINT
+          value: "http://product-service.microservice.svc.cluster.local"
+        - name: REQUEST_TIMEOUT
+          value: "7"
+        image: docker.io/redopsbay/sample-restful-api:loadgen-v1.0.0
+        imagePullPolicy: Always
+        name: load-generator
+      restartPolicy: Always
