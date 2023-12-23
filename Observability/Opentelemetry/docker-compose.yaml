@@ -1,0 +1,145 @@
+version: "3"
+services:
+  traefik-proxy:
+    image: traefik:v3.0
+    container_name: traefik-proxy
+    labels:
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)"
+      - "traefik.http.routers.api.service=api@internal" 
+    command:
+      - --log.level=DEBUG
+      - --api.insecure=true
+      - --api.dashboard=true
+      - --providers.docker
+      - --entrypoints.http.address=:80
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - microservice
+  product-service:
+    image: product-service:latest
+    build:
+      context: product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.product-service.loadbalancer.server.port=8000
+      - traefik.http.routers.product-service.rule=Host(`api.redopsbay.dev`)
+      - traefik.http.routers.product-service.entrypoints=http
+    environment:
+      - DATABASE_USER=admin
+      - DATABASE_PASSWORD=admin
+      - DATABASE_HOSTNAME=mariadb
+      - DATABASE_PORT=3306
+      - DATABASE_NAME=microservice
+      - REVIEWS_SERVICE=reviews-service:8090
+      - RATINGS_SERVICE=ratings-service:8080
+      - SERVICE_NAME=product-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=172.26.126.224:4317
+      - INSECURE_MODE=true
+    depends_on:
+      - mariadb
+    ports:
+      - 8000:8000
+    networks:
+      - microservice
+  reviews-service:
+    image: reviews-service:latest
+    build:
+      context: reviews-service
+      dockerfile: Dockerfile
+    container_name: reviews-service
+    labels:
+      - traefik.enable=false
+      - traefik.http.services.reviews-service.loadbalancer.server.port=8090
+      - traefik.http.routers.reviews-service.rule=Host(`api.redopsbay.dev`) && PathPrefix(`/reviews`)
+      - traefik.http.routers.reviews-service.entrypoints=http
+    environment:
+      - DATABASE_USER=admin
+      - DATABASE_PASSWORD=admin
+      - DATABASE_HOSTNAME=mariadb
+      - DATABASE_PORT=3306
+      - DATABASE_NAME=microservice
+      - SERVICE_NAME=reviews-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=172.26.126.224:4317
+      - INSECURE_MODE=true
+    depends_on:
+      - mariadb
+    ports:
+      - 8090:8090
+    networks:
+      - microservice
+  ratings-service:
+    image: ratings-service:latest
+    build:
+      context: ratings-service
+      dockerfile: Dockerfile
+    container_name: ratings-service
+    labels:
+      - traefik.enable=false
+      - traefik.http.services.ratings-service.loadbalancer.server.port=8080
+      - traefik.http.routers.ratings-service.rule=Host(`api.redopsbay.dev`) && PathPrefix(`/ratings`)
+      - traefik.http.routers.ratings-service.entrypoints=http
+      - traefik.http.routers.ratings-service.service=ratings-service
+      - traefik.http.services.ratings-service-https.loadbalancer.server.port=8080
+    environment:
+      - DATABASE_USER=admin
+      - DATABASE_PASSWORD=admin
+      - DATABASE_HOSTNAME=mariadb
+      - DATABASE_PORT=3306
+      - DATABASE_NAME=microservice
+      - SERVICE_NAME=ratings-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=172.26.126.224:4317
+      - INSECURE_MODE=true
+    depends_on:
+      - mariadb
+    ports:
+      - 8080:8080
+    networks:
+      - microservice
+  load-generator:
+    image: loadgen:latest
+    build:
+      context: load-gen
+      dockerfile: Dockerfile
+    container_name: loadgen
+    environment:
+      - API_ENDPOINT=http://product-service:8000
+      - REQUEST_TIMEOUT=3
+    depends_on:
+      - product-service
+    networks:
+      - microservice
+  adminer:
+    image: adminer:4.8.1-standalone
+    container_name: adminer-test-server
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.adminer.loadbalancer.server.port=8080
+      - traefik.http.routers.adminer.rule=Host(`api.redopsbay.dev`) && PathPrefix(`/adminer`)
+      - traefik.http.routers.adminer.entrypoints=http
+      - traefik.http.routers.adminer.service=adminer
+      - traefik.http.services.adminer-https.loadbalancer.server.port=8080
+    restart: always
+    ports:
+      - 9090:8080
+    networks:
+      - microservice
+  mariadb:
+    image: mariadb:10.6.14-focal
+    restart: always
+    container_name: mariadb-test-server
+    environment:
+      - MARIADB_USER=admin
+      - MARIADB_PASSWORD=admin
+      - MARIADB_ROOT_PASSWORD=admin
+      - MARIADB_DATABASE=microservice
+    ports:
+      - 3306:3306
+    networks:
+      - microservice
+networks:
+  microservice:
